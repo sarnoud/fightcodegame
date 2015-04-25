@@ -1,17 +1,6 @@
+/* Enemy class */
 
-//FightCode can only understand your robot
-//if its class is called Robot
-var Robot = function(robot) {
-};
-
-var id = -1;
-
-Robot.prototype.onIdle = function(ev) {
-  var robot = ev.robot;
-  robot.rotateCannon(30);
-};
-
-var FixRange = function(angle) {
+var FixAngleRange = function(angle) {
   while (angle < -180) {
     angle += 360;
   }
@@ -21,36 +10,73 @@ var FixRange = function(angle) {
   return angle;
 }
 
-var getCloser = function(robot, other) {
-  var dy = other.position.y - robot.position.y;
-  var dx = other.position.x - robot.position.x;
+var Enemy = function(id) {
+  this.id = id;
+};
+
+Enemy.prototype.Update = function(position) {
+  this.position = position;
+};
+
+Enemy.prototype.Angle = function(robot) {
+  var dx = this.position.x - robot.position.x;
+  var dy = this.position.y - robot.position.y;
 
   var angle = 180 * Math.atan(dy / dx) / Math.PI;
   if (dx < 0) {
     angle += 180;
   }
-  angle += 90 - robot.angle;
-  angle = FixRange(angle);
+  angle = FixAngleRange(angle);
+
+  return angle;
+};
+
+Enemy.prototype.Distance = function(robot) {
+  var dx = this.position.x - robot.position.x;
+  var dy = this.position.y - robot.position.y;
+  return Math.sqrt(dx * dx + dy * dy);
+};
+
+
+/* Robot class */
+
+var GetCloser = function(robot, enemy) {
+  var angle = enemy.Angle(robot) + 90 - robot.angle;
+  angle = FixAngleRange(angle);
   robot.turn(angle);
   robot.rotateCannon(-angle);
-  
-  var distance = Math.sqrt(dx * dx + dy * dy) - 100;
+
+  var distance = enemy.Distance(robot) - 100;
   if (distance > 0) {
     robot.move(distance);
   }
-  
-  return distance <= 0;
-}
+};
+
+var Robot = function(robot) {
+  this.enemies = {};
+};
+
+Robot.prototype.Enemy = function(id) {
+  if (!this.enemies[id]) {
+    this.enemies[id] = new Enemy(id);
+  }
+  return this.enemies[id];
+};
+
+Robot.prototype.onIdle = function(ev) {
+  var robot = ev.robot;
+  robot.rotateCannon(30);
+};
 
 Robot.prototype.onScannedRobot = function(ev) {
   var robot = ev.robot;
   var other = ev.scannedRobot;
-  if ((id >= 0) && (other.id != id)) {
-    return;
-  }
-  id = other.id;
+
+  var enemy = this.Enemy(other.id);
+  enemy.Update(other.position);
+
   robot.rotateCannon(5);
-  getCloser(robot, other); 
   robot.fire();
+  GetCloser(robot, enemy); 
   robot.rotateCannon(-40);
 };
