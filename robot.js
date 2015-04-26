@@ -10,25 +10,34 @@ var FixAngleRange = function(angle) {
   return angle;
 }
 
+var DegAtan = function(x, y) {
+  var res = Math.atan2(y, x);
+  return res * 180 / Math.PI;
+};
+
 var Enemy = function(id) {
   this.id = id;
 };
 
-Enemy.prototype.Update = function(position) {
-  this.position = position;
+Enemy.prototype.Update = function(other) {
+  this.position = other.position;
+  this.angle = other.angle;
 };
 
-Enemy.prototype.Angle = function(robot) {
+Enemy.prototype.CloserMove = function(robot, speed) {
   var dx = this.position.x - robot.position.x;
   var dy = this.position.y - robot.position.y;
 
-  var angle = 180 * Math.atan(dy / dx) / Math.PI;
-  if (dx < 0) {
-    angle += 180;
-  }
+  var alpha = (90 - this.angle) * Math.PI / 180;
+
+  var angle = DegAtan(dx + speed * Math.cos(alpha),
+    dy + speed * Math.sin(alpha));
   angle = FixAngleRange(angle);
 
-  return angle;
+  var distance = (dx + speed * Math.cos(alpha)) /
+  Math.cos(angle * Math.PI / 180);
+
+  return {angle: angle, distance: Math.abs(distance)};
 };
 
 Enemy.prototype.Distance = function(robot) {
@@ -41,19 +50,23 @@ Enemy.prototype.Distance = function(robot) {
 /* Robot class */
 
 var GetCloser = function(robot, enemy) {
-  var angle = enemy.Angle(robot) + 90 - robot.angle;
+  var move = enemy.CloserMove(robot, 100);
+  var angle = 90 + move.angle - robot.angle;
   angle = FixAngleRange(angle);
   robot.turn(angle);
   robot.rotateCannon(-angle);
 
-  var distance = enemy.Distance(robot) - 100;
-  if (distance > 0) {
-    robot.move(distance);
+  var distance = move.distance - 100;
+  if (distance > 200) {
+    robot.move(Math.max(200, distance));
+    return true;
   }
+  return false;
 };
 
 var Robot = function(robot) {
   this.enemies = {};
+  this.closest = -1;
 };
 
 Robot.prototype.Enemy = function(id) {
@@ -65,7 +78,15 @@ Robot.prototype.Enemy = function(id) {
 
 Robot.prototype.onIdle = function(ev) {
   var robot = ev.robot;
-  robot.rotateCannon(30);
+  robot.rotateCannon(360);
+  var moved = false;
+  if (this.closest != -1) {
+    moved = GetCloser(robot, this.enemies[this.closest]); 
+    this.closest = -1;    
+  }
+  if (!moved) {
+    robot.move(100);
+  }
 };
 
 Robot.prototype.onScannedRobot = function(ev) {
@@ -73,10 +94,19 @@ Robot.prototype.onScannedRobot = function(ev) {
   var other = ev.scannedRobot;
 
   var enemy = this.Enemy(other.id);
-  enemy.Update(other.position);
+  enemy.Update(other);
 
-  robot.rotateCannon(5);
-  robot.fire();
-  GetCloser(robot, enemy); 
-  robot.rotateCannon(-40);
+  if ((this.closest == -1) || (this.enemies[this.closest].Distance(robot) > enemy.Distance(robot))) {
+    this.closest = enemy.id;
+  }
+
+  robot.ignore('onScannedRobot');
+  for (var i = 0; i < 3; ++i) {
+    robot.rotateCannon(5);
+    robot.fire();    
+  }
+  if (enemy.Distance(robot) < 300) {
+    robot.rotateCannon(-40);    
+  }
+  robot.listen('onScannedRobot');
 };

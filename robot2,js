@@ -1,0 +1,127 @@
+var Modulo = function(angle) {
+  while (angle < -180) {
+    angle += 360;
+  }
+  while (angle > 180) {
+    angle -= 360;
+  }
+  return angle;
+};
+
+var Distance = function(p1, p2) {
+  var dx = p1.x - p2.x;
+  var dy = p1.y - p2.y;
+
+  return Math.sqrt(dx * dx + dy * dy);
+};
+
+var Mode = {
+  DISCOVERY: 0,
+  FIRE: 1,
+  START: 2
+};
+
+var MyRobot = function(id) {
+  this.id = id;
+  this.mode = Mode.START;
+  this.found = false;
+};
+
+MyRobot.prototype.onIdle = function(robot) {  
+  if (this.mode == Mode.START) {
+    if (robot.parentId) {
+      robot.turn(90);
+    } else {
+      robot.turn(-90);
+    }
+    robot.move(100);
+    this.mode = DISCOVERY;
+    return;
+  }
+  if ((this.mode == Mode.FIRE) && !this.found) {
+    this.mode = Mode.DISCOVERY;
+  }
+  this.found = false;
+  if (this.mode == Mode.DISCOVERY) {
+    robot.turn(90);
+    robot.move(100);
+    robot.rotateCannon(360);
+  } else if (this.mode == Mode.FIRE) {
+    robot.rotateCannon(-30);
+    robot.rotateCannon(360);
+  }
+};
+
+MyRobot.prototype.onScannedRobot = function(ev) {
+  var robot = ev.robot;
+  var other = ev.scannedRobot;
+
+  this.found = true;
+  this.mode = Mode.FIRE;
+
+  robot.stop();
+
+  robot.fire();
+
+  var angle = Modulo(-90 + robot.cannonRelativeAngle);
+  if (Math.abs(angle) > 5) {
+    robot.turn(angle);
+  }
+
+  var distance = Distance(robot.position, other.position);
+  if (distance > 100) {
+    robot.move(100);
+  }
+
+  if (Math.abs(angle) > 5) {
+    robot.rotateCannon(-angle);
+  }
+};
+
+MyRobot.prototype.onHitByBullet = function(ev) {
+  var robot = ev.robot;
+  robot.stop();
+  robot.turn(ev.bearing);
+  this.mode = Mode.FIRE;
+};
+
+var Robot = function(robot) {
+  this.mainId = robot.id;
+  this.robots = {};
+  robot.clone();
+};
+
+Robot.prototype.GetRobot = function(robot) {
+  var result = this.robots[robot.id];
+  if (result == undefined) {
+    result = new MyRobot(robot.id);
+    this.robots[robot.id] = result;
+  }
+  return result;
+};
+
+Robot.prototype.onIdle = function(ev) {
+  var robot = ev.robot;
+  this.GetRobot(robot).onIdle(robot);
+};
+
+Robot.prototype.IsAlly = function(robot) {
+  if (robot.id == this.mainId) {
+    return true;
+  }
+  if (!robot.parentId) {
+    return false;
+  }
+  return robot.parentId == this.mainId;
+};
+
+Robot.prototype.onScannedRobot = function(ev) {
+  if (this.IsAlly(ev.scannedRobot)) {
+    return;
+  }
+  this.GetRobot(ev.robot).onScannedRobot(ev);
+};
+
+Robot.prototype.onHitByBullet = function(ev) {
+  this.GetRobot(ev.robot).onHitByBullet(ev);
+};
